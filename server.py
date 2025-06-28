@@ -22,16 +22,22 @@ class P2PServer:
             client_thread.start()
 
     def handle_client(self, client_socket, addr):
+        ip_address = addr[0]
+        print(f"Conexão estabelecida com {ip_address}")
+
         try:
             while True:
                 data = client_socket.recv(1024).decode().strip()
                 if not data:
                     break
-                print(f"Recebido de {addr[0]}: {data}")
+
+                if data.startswith("JOIN"):
+                    client_socket.send("CONFIRMJOIN".encode())
+                    print(f"Cliente {ip_address} registrado")
         finally:
             client_socket.close()
-            print(f"Conexão encerrada com {addr[0]}")
-            
+            print(f"Conexão encerrada com {ip_address}")
+
 if __name__ == "__main__":
     server = P2PServer()
     try:
