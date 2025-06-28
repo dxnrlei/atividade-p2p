@@ -7,6 +7,7 @@ class P2PServer:
         self.port = port
         self.server_socket = None
         self.running = False
+        self.all_files = {}
 
     def start(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -17,10 +18,20 @@ class P2PServer:
 
         while self.running:
             client_socket, addr = self.server_socket.accept()
-            print(f"Conexão estabelecida com {addr[0]}")
-            client_socket.send("Conexão estabelecida!".encode())
-            client_socket.close()
+            client_thread = Thread(target=self.handle_client, args=(client_socket, addr))
+            client_thread.start()
 
+    def handle_client(self, client_socket, addr):
+        try:
+            while True:
+                data = client_socket.recv(1024).decode().strip()
+                if not data:
+                    break
+                print(f"Recebido de {addr[0]}: {data}")
+        finally:
+            client_socket.close()
+            print(f"Conexão encerrada com {addr[0]}")
+            
 if __name__ == "__main__":
     server = P2PServer()
     try:
