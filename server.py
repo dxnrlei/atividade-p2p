@@ -1,15 +1,17 @@
 import socket
+import json
 from threading import Thread
 
 class P2PServer:
     def __init__(self, host='0.0.0.0', port=1234):
         self.host = host
         self.port = port
+        self.all_files = {}
         self.server_socket = None
         self.running = False
-        self.all_files = {}
 
     def start(self):
+        """Inicia o servidor para aceitar conexões"""
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(5)
@@ -17,11 +19,23 @@ class P2PServer:
         print(f"Servidor iniciado em {self.host}:{self.port}")
 
         while self.running:
-            client_socket, addr = self.server_socket.accept()
-            client_thread = Thread(target=self.handle_client, args=(client_socket, addr))
-            client_thread.start()
+            try:
+                client_socket, addr = self.server_socket.accept()
+                client_thread = Thread(target=self.handle_client, args=(client_socket, addr))
+                client_thread.start()
+            except Exception as e:
+                if self.running:
+                    print(f"Erro ao aceitar conexão: {e}")
+
+    def stop(self):
+        """Para o servidor"""
+        self.running = False
+        if self.server_socket:
+            self.server_socket.close()
+        print("Servidor parado")
 
     def handle_client(self, client_socket, addr):
+        """Lida com as mensagens de um cliente"""
         ip_address = addr[0]
         print(f"Conexão estabelecida com {ip_address}")
 
@@ -31,25 +45,60 @@ class P2PServer:
                 if not data:
                     break
 
-                parts = data.split()
-                if parts[0] == "JOIN":
-                    client_socket.send("CONFIRMJOIN".encode())
-                elif parts[0] == "CREATEFILE" and len(parts) == 3:
-                    filename = parts[1]
-                    size = int(parts[2])
-                    if ip_address not in self.all_files:
-                        self.all_files[ip_address] = []
-                    self.all_files[ip_address].append({"filename": filename, "size": size})
-                    client_socket.send(f"CONFIRMCREATEFILE {filename}".encode())
+                print(f"Recebido de {ip_address}: {data}")
+                response = self.process_command(ip_address, data)
+                if response:
+                    client_socket.send(response.encode())
+                    print(f"Enviado para {ip_address}: {response}")
+
+        except Exception as e:
+            print(f"Erro ao lidar com cliente {ip_address}: {e}")
         finally:
-            if ip_address in self.all_files:
-                del self.all_files[ip_address]
+            self.user_leave(ip_address)
             client_socket.close()
+            print(f"Conexão encerrada com {ip_address}")
+
+    def process_command(self, ip_address, command):
+        """Processa os comandos recebidos do cliente"""
+        parts = command.split()
+        if not parts:
+            return None
+
+        cmd = parts[0].upper()
+        
+        if cmd == "JOIN" and len(parts) == 2:
+            return "CONFIRMJOIN"
+        
+        elif cmd == "CREATEFILE" and len(parts) == 3:
+            filename = parts[1]
+            try:
+                size = int(parts[2])
+                self.add_file(ip_address, {"filename": filename, "size": size})
+                return f"CONFIRMCREATEFILE {filename}"
+            except ValueError:
+                return None
+        
+        elif cmd == "LEAVE":
+            self.user_leave(ip_address)
+            return "CONFIRMLEAVE"
+        
+        return None
+
+    def add_file(self, ip_address, file):
+        """Adiciona um arquivo à lista do cliente"""
+        if ip_address not in self.all_files:
+            self.all_files[ip_address] = []
+        self.all_files[ip_address].append(file)
+
+    def user_leave(self, ip_address):
+        """Remove um cliente e seus arquivos da lista"""
+        if ip_address in self.all_files:
+            del self.all_files[ip_address]
+            print(f"Usuário {ip_address} removido com seus arquivos")
 
 if __name__ == "__main__":
     server = P2PServer()
     try:
         server.start()
     except KeyboardInterrupt:
-        server.server_socket.close()
-        print("Servidor parado")
+        server.stop()
