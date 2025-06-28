@@ -31,12 +31,20 @@ class P2PServer:
                 if not data:
                     break
 
-                if data.startswith("JOIN"):
+                parts = data.split()
+                if parts[0] == "JOIN":
                     client_socket.send("CONFIRMJOIN".encode())
-                    print(f"Cliente {ip_address} registrado")
+                elif parts[0] == "CREATEFILE" and len(parts) == 3:
+                    filename = parts[1]
+                    size = int(parts[2])
+                    if ip_address not in self.all_files:
+                        self.all_files[ip_address] = []
+                    self.all_files[ip_address].append({"filename": filename, "size": size})
+                    client_socket.send(f"CONFIRMCREATEFILE {filename}".encode())
         finally:
+            if ip_address in self.all_files:
+                del self.all_files[ip_address]
             client_socket.close()
-            print(f"Conexão encerrada com {ip_address}")
 
 if __name__ == "__main__":
     server = P2PServer()
