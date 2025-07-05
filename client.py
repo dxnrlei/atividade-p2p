@@ -59,7 +59,6 @@ class P2PClient:
                 sock.connect((self.server_host, self.server_port))
                 sock.sendall(command.encode())
                 response = sock.recv(4096).decode()
-                print(f"Resposta do servidor:\n{response}")
                 return response
         except Exception as e:
             print(f"Erro ao comunicar com o servidor: {e}")
@@ -68,13 +67,13 @@ class P2PClient:
     def delete_file(self, filename):
         """Envia comando para deletar um arquivo do servidor."""
         response = self.send_command_to_server(f"DELETEFILE {filename}")
-        print(f"Resposta do servidor ao deletar {filename}:\n {response}")
+        print(f"Resposta do servidor ao deletar '{filename}':\n{response}")
 
 
     def search_file(self, pattern):
         """Envia comando para buscar arquivos no servidor."""
         response = self.send_command_to_server(f"SEARCH {pattern}")
-        print(f"Resultados da busca por '{pattern}':\n {response}")
+        print(f"Resultados da busca por '{pattern}':\n{response}")
 
     def start_client_server(self):
         """Inicia o servidor do cliente para receber conexões de outros clientes"""
@@ -99,7 +98,7 @@ class P2PClient:
         """Lida com requisições de outros clientes"""
         try:
             request = client_socket.recv(1024).decode().strip()
-            print(f"Recebido de {addr}: {request}")
+            print(f"\n[Requisição recebida de {addr}: {request}]")
             parts = request.split()
             command = parts[0].upper()
 
@@ -126,7 +125,7 @@ class P2PClient:
                         end_offset = int(offset_parts[1])
                         
                         if end_offset < start_offset:
-                             client_socket.sendall("ERRO: Final do offset não pode maior que o começo".encode())
+                             client_socket.sendall("ERRO: Final do offset não pode ser menor que o começo".encode())
                              return
 
                         end_offset = min(end_offset, file_size - 1)
@@ -158,11 +157,10 @@ class P2PClient:
             print(f"Erro ao lidar com requisição: {e}")
         finally:
             client_socket.close()
+            print("> ", end="", flush=True)
 
     def stop(self):
         """Para o cliente e sua thread de servidor"""
-        print("Saindo...")
-        self.leave()
         self.running = False
         if self.server_socket:
             try:
@@ -178,7 +176,7 @@ class P2PClient:
         if self.server_thread:
             self.server_thread.join(timeout=2)
 
-        print("Cliente parado")
+        print("Cliente parado.")
 
     def leave(self):
         """Informa ao servidor que o cliente está saindo."""
@@ -190,7 +188,34 @@ class P2PClient:
 
 if __name__ == "__main__":
     client = P2PClient()
+    client.start()
+    
+    print("\nCliente P2P iniciado. Comandos disponíveis:")
+    print("\tsearch <pattern>  -\tBusca por arquivos")
+    print("\tdelete <filename> -\tRemove um arquivo do compartilhamento")
+    print("\texit              -\tSai da rede e encerra o cliente")
+
     try:
-        client.start()
+        while True:
+            command_input = input("> ").strip()
+            if not command_input:
+                continue
+
+            parts = command_input.split()
+            command = parts[0].lower()
+
+            if command == "search" and len(parts) > 1:
+                client.search_file(parts[1])
+            elif command == "delete" and len(parts) == 2:
+                client.delete_file(parts[1])
+            elif command == "exit":
+                print("Saindo...")
+                client.leave()
+                break
+            else:
+                print("Comando inválido. Tente novamente.")
+    
     except KeyboardInterrupt:
-        client.leave()
+        print("\nSaindo por interrupção do teclado...")
+    finally:
+        client.stop()
