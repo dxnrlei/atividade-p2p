@@ -94,6 +94,21 @@ class P2PServer:
             else:
                 return f"ERRORDELETEFILE ip não encontrado {ip_address}"
 
+        elif cmd == "SEARCH" and len(parts) == 2:
+            pattern = parts[1]
+            try:
+                matching_files = self.search(pattern)
+                response_string = ""
+                if matching_files:
+                    for f in matching_files:
+                        response_string += f"FILENAME {f['filename']} {f['ip_address']} {f['size']}\n"
+                    
+                    return response_string.strip()
+                else:
+                    return "NOFILESFOUND"
+            except ValueError:
+                return None
+
         elif cmd == "LEAVE":
             self.user_leave(ip_address)
             return "CONFIRMLEAVE"
@@ -105,6 +120,20 @@ class P2PServer:
         if ip_address not in self.all_files:
             self.all_files[ip_address] = []
         self.all_files[ip_address].append(file)
+
+    def search(self, pattern):
+        matching_files = []
+        for ip_address in self.all_files.keys():
+            for file in self.all_files[ip_address]:
+                if pattern in file['filename']:
+                    matching_files.append(
+                        {
+                            "ip_address": ip_address,
+                            "filename": file["filename"],
+                            "size": file["size"],
+                        }
+                    )
+        return matching_files
 
     def user_leave(self, ip_address):
         """Remove um cliente e seus arquivos da lista"""
