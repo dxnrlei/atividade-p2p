@@ -10,19 +10,22 @@ class P2PClient:
         self.public_folder = "public" 
         self.running = False
         self.server_socket = None
+        self.server_thread = None
 
     def start(self):
-        """Inicia o cliente e se conecta ao servidor"""
+        """Inicia o cliente, conecta-se ao servidor e inicia o servidor de escuta em uma thread."""
         if not os.path.exists(self.public_folder):
             os.makedirs(self.public_folder)
             print(f"Pasta '{self.public_folder}' criada")
 
-        self.connect_to_server()
+        self.register_with_server()
 
-        self.start_client_server()
+        self.server_thread = Thread(target=self.start_client_server)
+        self.server_thread.daemon = True 
+        self.server_thread.start()
 
-    def connect_to_server(self):
-        """Conecta ao servidor central e envia informações"""
+    def register_with_server(self):
+        """Conecta ao servidor central, envia JOIN e a lista de arquivos."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.connect((self.server_host, self.server_port))
@@ -37,38 +40,41 @@ class P2PClient:
                     self.send_public_files(sock)
 
         except Exception as e:
-            print(f"Erro ao conectar ao servidor: {e}")
+            print(f"Erro ao registrar com o servidor: {e}")
 
     def send_public_files(self, sock):
-        """Envia a lista de arquivos públicos para o servidor"""
-        try:
-            for filename in os.listdir(self.public_folder):
-                filepath = os.path.join(self.public_folder, filename)
-                if os.path.isfile(filepath):
-                    size = os.path.getsize(filepath)
-                    sock.sendall(f"CREATEFILE {filename} {size}".encode())
-                    response = sock.recv(1024).decode()
-                    print(f"Resposta do servidor para {filename}: {response}")
-        except Exception as e:
-            print(f"Erro ao enviar arquivos públicos: {e}")
+        """Envia a lista de arquivos públicos para o servidor usando uma conexão existente."""
+        for filename in os.listdir(self.public_folder):
+            filepath = os.path.join(self.public_folder, filename)
+            if os.path.isfile(filepath):
+                size = os.path.getsize(filepath)
+                sock.sendall(f"CREATEFILE {filename} {size}".encode())
+                response = sock.recv(1024).decode()
+                print(f"Resposta do servidor para {filename}: {response}")
 
-    def delete_file(self, sock, filename):
-        """Envia comando para deletar um arquivo do servidor"""
+    def send_command_to_server(self, command):
+        """Abre uma nova conexão para enviar um único comando e obter a resposta."""
         try:
-            sock.sendall(f"DELETEFILE {filename}".encode())
-            response = sock.recv(1024).decode()
-            print(f"Resposta do servidor ao deletar {filename}: {response}")
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.connect((self.server_host, self.server_port))
+                sock.sendall(command.encode())
+                response = sock.recv(4096).decode()
+                print(f"Resposta do servidor:\n{response}")
+                return response
         except Exception as e:
-            print(f"Erro ao deletar arquivo: {e}")
+            print(f"Erro ao comunicar com o servidor: {e}")
+            return None
 
-    def search_file(self, sock, pattern):
-        """Envia comando para buscar arquivos no servidor"""
-        try:
-            sock.sendall(f"SEARCH {pattern}".encode())
-            response = sock.recv(1024).decode()
-            print(f"Resultados da busca por '{pattern}':\n {response}")
-        except Exception as e:
-            print(f"Erro ao buscar arquivo: {e}")
+    def delete_file(self, filename):
+        """Envia comando para deletar um arquivo do servidor."""
+        response = self.send_command_to_server(f"DELETEFILE {filename}")
+        print(f"Resposta do servidor ao deletar {filename}:\n {response}")
+
+
+    def search_file(self, pattern):
+        """Envia comando para buscar arquivos no servidor."""
+        response = self.send_command_to_server(f"SEARCH {pattern}")
+        print(f"Resultados da busca por '{pattern}':\n {response}")
 
     def start_client_server(self):
         """Inicia o servidor do cliente para receber conexões de outros clientes"""
@@ -81,11 +87,13 @@ class P2PClient:
         while self.running:
             try:
                 client_socket, addr = self.server_socket.accept()
+                if not self.running:
+                    break
                 client_thread = Thread(target=self.handle_client_request, args=(client_socket, addr))
                 client_thread.start()
             except Exception as e:
                 if self.running:
-                    print(f"Erro ao aceitar conexão: {e}")
+                    print(f"Erro no servidor do cliente: {e}")
 
     def handle_client_request(self, client_socket, addr):
         """Lida com requisições de outros clientes"""
@@ -125,7 +133,6 @@ class P2PClient:
                         
                     else:
                         end_offset = file_size - 1
-                    
                         
                     bytes_to_read = end_offset - start_offset + 1
                     with open(filepath, 'rb') as f:
@@ -153,26 +160,34 @@ class P2PClient:
             client_socket.close()
 
     def stop(self):
-        """Para o cliente"""
+        """Para o cliente e sua thread de servidor"""
+        print("Saindo...")
+        self.leave()
         self.running = False
         if self.server_socket:
-            self.server_socket.close()
+            try:
+                # Conecta-se a si mesmo para desbloquear o accept() e fechar a thread
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(1)
+                    s.connect(('127.0.0.1', self.client_port))
+            except Exception:
+                pass
+            finally:
+                self.server_socket.close()
+        
+        if self.server_thread:
+            self.server_thread.join(timeout=2)
+
         print("Cliente parado")
 
-    def leave(self, sock):
-        try:
-            sock.sendall("LEAVE".encode())
-            response = sock.recv(1024).decode()
-            print(f"Resposta do servidor ao sair: {response}")
-            if response == "CONFIRMLEAVE":
-                print("Cliente desconectado do servidor com sucesso")
-                self.stop()
-            else:
-                raise Exception(f"Resposta inesperada - {response}")
-                
-        except Exception as e:
-            print(f"Erro ao sair do servidor: {e}")
-            
+    def leave(self):
+        """Informa ao servidor que o cliente está saindo."""
+        response = self.send_command_to_server("LEAVE")
+        if response and "CONFIRMLEAVE" in response:
+            print("Saída confirmada pelo servidor.")
+        else:
+            print("Não foi possível confirmar a saída com o servidor.")
+
 if __name__ == "__main__":
     client = P2PClient()
     try:
