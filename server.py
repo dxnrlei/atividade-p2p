@@ -1,11 +1,12 @@
 import socket
-from threading import Thread
+from threading import Thread, Lock
 
 class P2PServer:
     def __init__(self, host='0.0.0.0', port=1234):
         self.host = host
         self.port = port
         self.all_files = {}
+        self.files_lock = Lock()
         self.server_socket = None
         self.running = False
 
@@ -79,19 +80,20 @@ class P2PServer:
 
         elif cmd == "DELETEFILE" and len(parts) == 2:
             filename = parts[1]
-            if ip_address in self.all_files:
-                client_files = self.all_files[ip_address]
-                updated_files = [f for f in client_files if f.get('filename') != filename]
+            with self.files_lock:
+                if ip_address in self.all_files:
+                    client_files = self.all_files[ip_address]
+                    updated_files = [f for f in client_files if f.get('filename') != filename]
 
-                if len(updated_files) < len(client_files):
-                    self.all_files[ip_address] = updated_files
-                    print(f"Arquivo {filename} removido para o usuário {ip_address}")
-                    return f"CONFIRMDELETEFILE {filename}"
+                    if len(updated_files) < len(client_files):
+                        self.all_files[ip_address] = updated_files
+                        print(f"Arquivo {filename} removido para o usuário {ip_address}")
+                        return f"CONFIRMDELETEFILE {filename}"
+                    else:
+                        return f"ERRORDELETEFILE {filename} not found"
+
                 else:
-                    return f"ERRORDELETEFILE {filename} não encontrado"
-
-            else:
-                return f"ERRORDELETEFILE ip não encontrado {ip_address}"
+                    return f"ERRORDELETEFILE ip not found {ip_address}"
 
         elif cmd == "SEARCH" and len(parts) == 2:
             pattern = parts[1]
@@ -106,7 +108,7 @@ class P2PServer:
                 else:
                     return "NOFILESFOUND"
             except ValueError:
-                return None
+                return "ERRORSEARCH Busca inválida"
 
         elif cmd == "LEAVE":
             self.user_leave(ip_address)
@@ -116,29 +118,32 @@ class P2PServer:
 
     def add_file(self, ip_address, file):
         """Adiciona um arquivo à lista do cliente"""
-        if ip_address not in self.all_files:
-            self.all_files[ip_address] = []
-        self.all_files[ip_address].append(file)
+        with self.files_lock:
+            if ip_address not in self.all_files:
+                self.all_files[ip_address] = []
+            self.all_files[ip_address].append(file)
 
     def search(self, pattern):
         matching_files = []
-        for ip_address in self.all_files.keys():
-            for file in self.all_files[ip_address]:
-                if pattern in file['filename']:
-                    matching_files.append(
-                        {
-                            "ip_address": ip_address,
-                            "filename": file["filename"],
-                            "size": file["size"],
-                        }
-                    )
+        with self.files_lock:
+            for ip_address in self.all_files.keys():
+                for file in self.all_files[ip_address]:
+                    if pattern in file['filename']:
+                        matching_files.append(
+                            {
+                                "ip_address": ip_address,
+                                "filename": file["filename"],
+                                "size": file["size"],
+                            }
+                        )
         return matching_files
 
     def user_leave(self, ip_address):
         """Remove um cliente e seus arquivos da lista"""
-        if ip_address in self.all_files:
-            del self.all_files[ip_address]
-            print(f"Usuário {ip_address} removido com seus arquivos")
+        with self.files_lock:
+            if ip_address in self.all_files:
+                del self.all_files[ip_address]
+                print(f"Usuário {ip_address} removido com seus arquivos")
 
 if __name__ == "__main__":
     server = P2PServer()
