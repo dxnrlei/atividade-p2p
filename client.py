@@ -90,10 +90,63 @@ class P2PClient:
     def handle_client_request(self, client_socket, addr):
         """Lida com requisições de outros clientes"""
         try:
-            data = client_socket.recv(1024).decode().strip()
-            print(f"Recebido de {addr}: {data}")
-            # Aqui será implementado o tratamento de GET mais tarde
-            client_socket.send("COMANDO NÃO IMPLEMENTADO".encode())
+            request = client_socket.recv(1024).decode().strip()
+            print(f"Recebido de {addr}: {request}")
+            parts = request.split()
+            command = parts[0].upper()
+
+            if command == "GET" and len(parts) == 3:
+                filename = parts[1]
+                offset_range = parts[2]
+
+                filepath = os.path.join(self.public_folder, filename)
+
+                if not os.path.exists(filepath):
+                    client_socket.send(f"ERRO: Arquivo {filename} não encontrado".encode())
+                    return
+                
+                try:
+                    offset_parts = offset_range.split('-')
+                    start_offset = int(offset_parts[0])
+                    file_size = os.path.getsize(filepath)
+                    
+                    if start_offset >= file_size or start_offset < 0:
+                        client_socket.send("ERRO: Offset inválido".encode())
+                        return
+                    
+                    if len(offset_parts) > 1 and offset_parts[1]:
+                        end_offset = int(offset_parts[1])
+                        
+                        if end_offset < start_offset:
+                             client_socket.send("ERRO: Final do offset não pode maior que o começo".encode())
+                             return
+
+                        end_offset = min(end_offset, file_size - 1)
+                        
+                    else:
+                        end_offset = file_size - 1
+                    
+                        
+                    bytes_to_read = end_offset - start_offset + 1
+                    with open(filepath, 'rb') as f:
+                        f.seek(start_offset)
+                        remaining_bytes = bytes_to_read
+                        
+                        while remaining_bytes > 0:
+                            chunk_size = min(4096, remaining_bytes)
+                            chunk = f.read(chunk_size)
+                            if not chunk:
+                                break
+                            client_socket.sendall(chunk)
+                            remaining_bytes -= len(chunk)
+                            
+                except ValueError:
+                    client_socket.send("ERRO: Formato de offset inválido. Use START-END".encode())
+                    return   
+                    
+            else: 
+                client_socket.send(f"ERRO: Comando inválido '{command}'".encode())
+                
         except Exception as e:
             print(f"Erro ao lidar com requisição: {e}")
         finally:
