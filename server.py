@@ -65,10 +65,10 @@ class P2PServer:
             return None
 
         cmd = parts[0].upper()
-        
+
         if cmd == "JOIN" and len(parts) == 2:
             return "CONFIRMJOIN"
-        
+
         elif cmd == "CREATEFILE" and len(parts) == 3:
             filename = parts[1]
             try:
@@ -77,7 +77,23 @@ class P2PServer:
                 return f"CONFIRMCREATEFILE {filename}"
             except ValueError:
                 return None
-        
+
+        elif cmd == "DELETEFILE" and len(parts) == 2:
+            filename = parts[1]
+            if ip_address in self.all_files:
+                client_files = self.all_files[ip_address]
+                updated_files = [f for f in client_files if f.get('filename') != filename]
+
+                if len(updated_files) < len(client_files):
+                    self.all_files[ip_address] = updated_files
+                    print(f"Arquivo {filename} removido para o usuário {ip_address}")
+                    return f"CONFIRMDELETEFILE {filename}"
+                else:
+                    return f"ERRORDELETEFILE {filename} não encontrado"
+
+            else:
+                return f"ERRORDELETEFILE ip não encontrado {ip_address}"
+
         elif cmd == "LEAVE":
             self.user_leave(ip_address)
             return "CONFIRMLEAVE"

@@ -52,6 +52,24 @@ class P2PClient:
         except Exception as e:
             print(f"Erro ao enviar arquivos públicos: {e}")
 
+    def delete_file(self, sock, filename):
+        """Envia comando para deletar um arquivo do servidor"""
+        try:
+            sock.send(f"DELETEFILE {filename}".encode())
+            response = sock.recv(1024).decode()
+            print(f"Resposta do servidor ao deletar {filename}: {response}")
+        except Exception as e:
+            print(f"Erro ao deletar arquivo: {e}")
+
+    def search_file(self, sock, pattern):
+        """Envia comando para buscar arquivos no servidor"""
+        try:
+            sock.send(f"SEARCH {pattern}".encode())
+            response = sock.recv(1024).decode()
+            print(f"Resultados da busca por '{pattern}':\n {response}")
+        except Exception as e:
+            print(f"Erro ao buscar arquivo: {e}")
+
     def start_client_server(self):
         """Inicia o servidor do cliente para receber conexões de outros clientes"""
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
