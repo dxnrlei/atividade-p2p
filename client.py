@@ -69,11 +69,53 @@ class P2PClient:
         response = self.send_command_to_server(f"DELETEFILE {filename}")
         print(f"Resposta do servidor ao deletar '{filename}':\n{response}")
 
-
     def search_file(self, pattern):
         """Envia comando para buscar arquivos no servidor."""
         response = self.send_command_to_server(f"SEARCH {pattern}")
         print(f"Resultados da busca por '{pattern}':\n{response}")
+        return response
+
+    def download_file(self, peer_ip, filename, offset_range="0-"):
+        """Baixa um arquivo de outro peer."""
+        try:
+            print(f"Tentando baixar '{filename}' de {peer_ip}...")
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.connect((peer_ip, 1235))
+                
+                command = f"GET {filename} {offset_range}"
+                sock.sendall(command.encode())
+                
+                save_path = os.path.join(self.public_folder, filename)
+                
+                with open(save_path, 'wb') as f:
+                    first_chunk = True
+                    while True:
+                        chunk = sock.recv(4096)
+                        if not chunk:
+                            print("Download completo ou conexão fechada pelo peer.")
+                            break 
+                        
+                        if first_chunk:
+                            try:
+                                decoded_chunk = chunk.decode()
+                                # Caso o primeiro chunk seja uma mensagem de erro do peer
+                                if decoded_chunk.startswith("ERRO:"):
+                                    print(f"Erro recebido do peer: {decoded_chunk}")
+                                    f.close()
+                                    os.remove(save_path)
+                                    return
+                            except UnicodeDecodeError:
+                                pass
+                            first_chunk = False
+                            
+                        f.write(chunk)
+                
+                print(f"Arquivo '{filename}' baixado com sucesso e salvo em '{save_path}'")
+
+        except ConnectionRefusedError:
+            print(f"Erro: A conexão com {peer_ip} foi recusada. Verifique se o peer está online.")
+        except Exception as e:
+            print(f"Ocorreu um erro durante o download: {e}")
 
     def start_client_server(self):
         """Inicia o servidor do cliente para receber conexões de outros clientes"""
@@ -192,12 +234,14 @@ if __name__ == "__main__":
     
     print("\nCliente P2P iniciado. Comandos disponíveis:")
     print("\tsearch <pattern>  -\tBusca por arquivos")
+    print("\tget <arquivo> [offset_start-offset_end] -\tBaixa um arquivo de um peer. Ex: get doc.txt 0-1023")
     print("\tdelete <filename> -\tRemove um arquivo do compartilhamento")
     print("\texit              -\tSai da rede e encerra o cliente")
 
     try:
         while True:
             command_input = input("> ").strip()
+            known_files = []
             if not command_input:
                 continue
 
@@ -205,7 +249,30 @@ if __name__ == "__main__":
             command = parts[0].lower()
 
             if command == "search" and len(parts) > 1:
-                client.search_file(parts[1])
+                search_result = client.search_file(parts[1])
+                for line in search_result.splitlines():
+                    if line.startswith("FILE"):
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            filename = parts[1].strip()
+                            ip_address = parts[2].strip()
+                            if [filename, ip_address] not in known_files:
+                                known_files.append([filename, ip_address])
+                            
+            elif command == "get" and len(parts) >= 2:
+                filename = parts[1]
+                offset_range = parts[2] if len(parts) == 3 else "0-"
+                peer_ip = None
+                for file_info in known_files:
+                    if file_info[0] == filename:
+                        peer_ip = file_info[1]
+                        break
+
+                if not peer_ip:
+                    print(f"Erro: Não foi possível encontrar o IP do peer para o arquivo '{filename}'.")
+                    continue
+                
+                client.download_file(peer_ip, filename, offset_range)
             elif command == "delete" and len(parts) == 2:
                 client.delete_file(parts[1])
             elif command == "exit":

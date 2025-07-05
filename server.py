@@ -102,7 +102,7 @@ class P2PServer:
                 response_string = ""
                 if matching_files:
                     for f in matching_files:
-                        response_string += f"FILENAME {f['filename']} {f['ip_address']} {f['size']}\n"
+                        response_string += f"FILE {f['filename']} {f['ip_address']} {f['size']}\n"
                     
                     return response_string.strip()
                 else:
