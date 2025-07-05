@@ -159,9 +159,23 @@ class P2PClient:
             self.server_socket.close()
         print("Cliente parado")
 
+    def leave(self, sock):
+        try:
+            sock.send("LEAVE".encode())
+            response = sock.recv(1024).decode()
+            print(f"Resposta do servidor ao sair: {response}")
+            if response == "CONFIRMLEAVE":
+                print("Cliente desconectado do servidor com sucesso")
+                self.stop()
+            else:
+                raise Exception(f"Resposta inesperada - {response}")
+                
+        except Exception as e:
+            print(f"Erro ao sair do servidor: {e}")
+            
 if __name__ == "__main__":
     client = P2PClient()
     try:
         client.start()
     except KeyboardInterrupt:
-        client.stop()
+        client.leave()
