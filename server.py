@@ -1,5 +1,4 @@
 import socket
-import json
 from threading import Thread
 
 class P2PServer:
@@ -48,7 +47,7 @@ class P2PServer:
                 print(f"Recebido de {ip_address}: {data}")
                 response = self.process_command(ip_address, data)
                 if response:
-                    client_socket.send(response.encode())
+                    client_socket.sendall(response.encode())
                     print(f"Enviado para {ip_address}: {response}")
 
         except Exception as e:

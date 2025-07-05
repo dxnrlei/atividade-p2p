@@ -29,7 +29,7 @@ class P2PClient:
                 
                 # Envia JOIN com o IP do cliente (simplificado para localhost)
                 ip_address = "127.0.0.1"
-                sock.send(f"JOIN {ip_address}".encode())
+                sock.sendall(f"JOIN {ip_address}".encode())
                 response = sock.recv(1024).decode()
                 print(f"Resposta do servidor: {response}")
 
@@ -46,7 +46,7 @@ class P2PClient:
                 filepath = os.path.join(self.public_folder, filename)
                 if os.path.isfile(filepath):
                     size = os.path.getsize(filepath)
-                    sock.send(f"CREATEFILE {filename} {size}".encode())
+                    sock.sendall(f"CREATEFILE {filename} {size}".encode())
                     response = sock.recv(1024).decode()
                     print(f"Resposta do servidor para {filename}: {response}")
         except Exception as e:
@@ -55,7 +55,7 @@ class P2PClient:
     def delete_file(self, sock, filename):
         """Envia comando para deletar um arquivo do servidor"""
         try:
-            sock.send(f"DELETEFILE {filename}".encode())
+            sock.sendall(f"DELETEFILE {filename}".encode())
             response = sock.recv(1024).decode()
             print(f"Resposta do servidor ao deletar {filename}: {response}")
         except Exception as e:
@@ -64,7 +64,7 @@ class P2PClient:
     def search_file(self, sock, pattern):
         """Envia comando para buscar arquivos no servidor"""
         try:
-            sock.send(f"SEARCH {pattern}".encode())
+            sock.sendall(f"SEARCH {pattern}".encode())
             response = sock.recv(1024).decode()
             print(f"Resultados da busca por '{pattern}':\n {response}")
         except Exception as e:
@@ -102,7 +102,7 @@ class P2PClient:
                 filepath = os.path.join(self.public_folder, filename)
 
                 if not os.path.exists(filepath):
-                    client_socket.send(f"ERRO: Arquivo {filename} não encontrado".encode())
+                    client_socket.sendall(f"ERRO: Arquivo {filename} não encontrado".encode())
                     return
                 
                 try:
@@ -111,14 +111,14 @@ class P2PClient:
                     file_size = os.path.getsize(filepath)
                     
                     if start_offset >= file_size or start_offset < 0:
-                        client_socket.send("ERRO: Offset inválido".encode())
+                        client_socket.sendall("ERRO: Offset inválido".encode())
                         return
                     
                     if len(offset_parts) > 1 and offset_parts[1]:
                         end_offset = int(offset_parts[1])
                         
                         if end_offset < start_offset:
-                             client_socket.send("ERRO: Final do offset não pode maior que o começo".encode())
+                             client_socket.sendall("ERRO: Final do offset não pode maior que o começo".encode())
                              return
 
                         end_offset = min(end_offset, file_size - 1)
@@ -141,11 +141,11 @@ class P2PClient:
                             remaining_bytes -= len(chunk)
                             
                 except ValueError:
-                    client_socket.send("ERRO: Formato de offset inválido. Use START-END".encode())
+                    client_socket.sendall("ERRO: Formato de offset inválido. Use START-END".encode())
                     return   
                     
             else: 
-                client_socket.send(f"ERRO: Comando inválido '{command}'".encode())
+                client_socket.sendall(f"ERRO: Comando inválido '{command}'".encode())
                 
         except Exception as e:
             print(f"Erro ao lidar com requisição: {e}")
@@ -161,7 +161,7 @@ class P2PClient:
 
     def leave(self, sock):
         try:
-            sock.send("LEAVE".encode())
+            sock.sendall("LEAVE".encode())
             response = sock.recv(1024).decode()
             print(f"Resposta do servidor ao sair: {response}")
             if response == "CONFIRMLEAVE":
