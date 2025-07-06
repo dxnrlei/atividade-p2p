@@ -4,12 +4,12 @@ def main():
     cli_client = P2PClient()
 
     print("\nCliente P2P CLI. Comandos disponíveis:")
-    print("\tsearch <pattern>  -\tBusca por arquivos")
-    print("\tget <arquivo> [offset_start-offset_end] -\tBaixa um arquivo de um peer. Ex: get doc.txt 0-1023")
-    print("\tcreatefile <filename> -\tCria um arquivo para compartilhamento")
-    print("\tdelete <filename> -\tRemove um arquivo do compartilhamento")
-    print("\tleave             -\tSai da rede (o container continua rodando)")
-    print("\texit              -\tSai da CLI")
+    print("search <pattern>\t- Busca por arquivos")
+    print("get <arquivo> [offset_start-offset_end]\t- Baixa um arquivo de um peer.\n\tEx: get doc.txt 0-1023")
+    print("createfile <filename> -\tRegistra um arquivo para compartilhamento")
+    print("delete <filename>\t- Remove um arquivo do compartilhamento")
+    print("leave\t- Sai da rede (o container continua rodando)")
+    print("exit\t- Sai da CLI")
 
     try:
         while True:
@@ -18,34 +18,40 @@ def main():
 
             if command.startswith("search") and len(parts) == 2:
                 pattern = parts[1]
-                print(f"Buscando arquivos com o padrão: {pattern}")
                 search_result = cli_client.search_file(pattern)
                 
-                if search_result and search_result != "NOFILESFOUND":
-                    print("Arquivos encontrados:")
-                    for line in search_result.splitlines():
-                        if line.startswith("FILE"):
-                            print(f"\t{line}")
+                if search_result and search_result == "NOFILESFOUND":
 
-                else:
+
                     print("Nenhum arquivo encontrado.")
 
             elif command.startswith("get") and len(parts) >= 2:
-                filename = parts[1]
+                searched_file = parts[1]
                 offset_range = parts[2] if len(parts) == 3 else "0-"
                 peer_ip = None
-                search_result = cli_client.search_file(filename)
-                
+                search_result = cli_client.search_file(searched_file)
+                known_files = []
                 if not search_result or search_result == "NOFILESFOUND":
-                    print(f"Erro: Arquivo '{filename}' não encontrado.")
+                    print(f"Erro: Arquivo '{searched_file}' não encontrado.")
                 else:
-                    file_parts = search_result.split()
-                    peer_ip = file_parts[2] if len(file_parts) >= 3 else None
+                    for line in search_result.splitlines():
+                        if line.startswith("FILE"):
+                            parts = line.split()
+                            if len(parts) >= 4:
+                                filename = parts[1].strip()
+                                ip_address = parts[2].strip()
+                                known_files.append([filename, ip_address])                  
                     
-                if file_parts[1] != filename:
-                    print(f"Erro: Arquivo '{filename}' não encontrado no peer {peer_ip}. Você quis dizer '{file_parts[1]}'?")
+                
+                for file_info in known_files:
+                    if file_info[0] == searched_file:
+                        peer_ip = file_info[1]
+                        break
+                
+                if not peer_ip:
+                    print(f"Erro: Arquivo '{searched_file}' não encontrado em nenhum peer.")
                     continue
-
+                
                 print(f"Baixando arquivo: {filename} de {peer_ip} com offset: {offset_range}")
                 cli_client.download_file(peer_ip, filename, offset_range)
 

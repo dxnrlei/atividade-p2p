@@ -32,7 +32,7 @@ class P2PClient:
                 print(f"Resposta do servidor: {response}")
 
                 if response == "CONFIRMJOIN":
-                    self.send_public_files(sock)
+                    self.send_public_files()
 
         except Exception as e:
             print(f"Erro ao registrar com o servidor: {e}")
@@ -188,7 +188,7 @@ class P2PClient:
                             remaining_bytes -= len(chunk)
                             
                 except ValueError:
-                    client_socket.sendall("ERRO: Formato de offset inválido. Use START-END".encode())
+                    client_socket.sendall("ERRO: Formato de offset inválido ou arquivo com 0 bytes.".encode())
                     return   
                     
             else: 
