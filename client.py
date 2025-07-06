@@ -4,25 +4,21 @@ from threading import Thread
 
 class P2PClient:
     def __init__(self, server_host='localhost', server_port=1234, client_port=1235):
-        self.server_host = server_host
+        self.server_host = os.getenv("SERVER_HOST", server_host)
+        self.my_address = os.getenv("MY_ADDRESS", "127.0.0.1")
         self.server_port = server_port
         self.client_port = client_port
         self.public_folder = "public" 
         self.running = False
         self.server_socket = None
-        self.server_thread = None
 
     def start(self):
-        """Inicia o cliente, conecta-se ao servidor e inicia o servidor de escuta em uma thread."""
+        """Inicia o cliente, conecta-se ao servidor."""
         if not os.path.exists(self.public_folder):
             os.makedirs(self.public_folder)
             print(f"Pasta '{self.public_folder}' criada")
 
         self.register_with_server()
-
-        self.server_thread = Thread(target=self.start_client_server)
-        self.server_thread.daemon = True 
-        self.server_thread.start()
 
     def register_with_server(self):
         """Conecta ao servidor central, envia JOIN e a lista de arquivos."""
@@ -30,9 +26,8 @@ class P2PClient:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.connect((self.server_host, self.server_port))
                 
-                # Envia JOIN com o IP do cliente (simplificado para localhost)
-                ip_address = "127.0.0.1"
-                sock.sendall(f"JOIN {ip_address}".encode())
+                # Envia JOIN com o IP/endereço do cliente
+                sock.sendall(f"JOIN {self.my_address}".encode())
                 response = sock.recv(1024).decode()
                 print(f"Resposta do servidor: {response}")
 
@@ -42,16 +37,20 @@ class P2PClient:
         except Exception as e:
             print(f"Erro ao registrar com o servidor: {e}")
 
-    def send_public_files(self, sock):
+    def send_public_files(self):
         """Envia a lista de arquivos públicos para o servidor usando uma conexão existente."""
         for filename in os.listdir(self.public_folder):
-            filepath = os.path.join(self.public_folder, filename)
-            if os.path.isfile(filepath):
-                size = os.path.getsize(filepath)
-                sock.sendall(f"CREATEFILE {filename} {size}".encode())
-                response = sock.recv(1024).decode()
-                print(f"Resposta do servidor para {filename}: {response}")
-
+            self.send_single_file(filename)
+    
+    def send_single_file(self, filename):
+        filepath = os.path.join(self.public_folder, filename)
+        if os.path.isfile(filepath):
+            size = os.path.getsize(filepath)
+            resp = self.send_command_to_server(f"CREATEFILE {filename} {size}")
+            print(resp)
+        else: 
+            print(f"Arquivo '{filename}' não encontrado na pasta /public.")
+                
     def send_command_to_server(self, command):
         """Abre uma nova conexão para enviar um único comando e obter a resposta."""
         try:
@@ -205,18 +204,7 @@ class P2PClient:
         """Para o cliente e sua thread de servidor"""
         self.running = False
         if self.server_socket:
-            try:
-                # Conecta-se a si mesmo para desbloquear o accept() e fechar a thread
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(1)
-                    s.connect(('127.0.0.1', self.client_port))
-            except Exception:
-                pass
-            finally:
                 self.server_socket.close()
-        
-        if self.server_thread:
-            self.server_thread.join(timeout=2)
 
         print("Cliente parado.")
 
@@ -232,57 +220,10 @@ if __name__ == "__main__":
     client = P2PClient()
     client.start()
     
-    print("\nCliente P2P iniciado. Comandos disponíveis:")
-    print("\tsearch <pattern>  -\tBusca por arquivos")
-    print("\tget <arquivo> [offset_start-offset_end] -\tBaixa um arquivo de um peer. Ex: get doc.txt 0-1023")
-    print("\tdelete <filename> -\tRemove um arquivo do compartilhamento")
-    print("\texit              -\tSai da rede e encerra o cliente")
-
     try:
-        while True:
-            command_input = input("> ").strip()
-            known_files = []
-            if not command_input:
-                continue
-
-            parts = command_input.split()
-            command = parts[0].lower()
-
-            if command == "search" and len(parts) > 1:
-                search_result = client.search_file(parts[1])
-                for line in search_result.splitlines():
-                    if line.startswith("FILE"):
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            filename = parts[1].strip()
-                            ip_address = parts[2].strip()
-                            if [filename, ip_address] not in known_files:
-                                known_files.append([filename, ip_address])
-                            
-            elif command == "get" and len(parts) >= 2:
-                filename = parts[1]
-                offset_range = parts[2] if len(parts) == 3 else "0-"
-                peer_ip = None
-                for file_info in known_files:
-                    if file_info[0] == filename:
-                        peer_ip = file_info[1]
-                        break
-
-                if not peer_ip:
-                    print(f"Erro: Não foi possível encontrar o IP do peer para o arquivo '{filename}'.")
-                    continue
-                
-                client.download_file(peer_ip, filename, offset_range)
-            elif command == "delete" and len(parts) == 2:
-                client.delete_file(parts[1])
-            elif command == "exit":
-                print("Saindo...")
-                client.leave()
-                break
-            else:
-                print("Comando inválido. Tente novamente.")
-    
+        client.start_client_server()
     except KeyboardInterrupt:
         print("\nSaindo por interrupção do teclado...")
     finally:
+        client.leave()
         client.stop()

@@ -53,10 +53,6 @@ class P2PServer:
 
         except Exception as e:
             print(f"Erro ao lidar com cliente {ip_address}: {e}")
-        finally:
-            self.user_leave(ip_address)
-            client_socket.close()
-            print(f"Conexão encerrada com {ip_address}")
 
     def process_command(self, ip_address, command):
         """Processa os comandos recebidos do cliente"""
@@ -121,7 +117,8 @@ class P2PServer:
         with self.files_lock:
             if ip_address not in self.all_files:
                 self.all_files[ip_address] = []
-            self.all_files[ip_address].append(file)
+            if file not in self.all_files[ip_address]:
+                self.all_files[ip_address].append(file)
 
     def search(self, pattern):
         matching_files = []
