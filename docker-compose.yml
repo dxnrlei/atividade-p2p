@@ -1,0 +1,44 @@
+services:
+  server:
+    build: .
+    command: python server.py
+    ports:
+      - "1234:1234"
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - p2p-net
+
+  client1:
+    build: .
+    command: python client.py
+    depends_on:
+      - server
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SERVER_HOST=server
+      - MY_ADDRESS=client1
+    networks:
+      - p2p-net
+    volumes:
+      - ./client1/public:/app/public
+    tty: true
+
+  client2:
+    build: .
+    command: python client.py
+    depends_on:
+      - server
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SERVER_HOST=server
+      - MY_ADDRESS=client2
+    networks:
+      - p2p-net
+    volumes:
+      - ./client2/public:/app/public
+    tty: true
+
+networks:
+  p2p-net:
+    driver: bridge
